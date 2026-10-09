@@ -1,0 +1,4 @@
+<resources>
+ <string name="app_name">DragonCity AutoBot</string>
+ <string name="service_description">Serviço de acessibilidade experimental. Não executa toques automáticos sem configuração.</string>
+</resources>
