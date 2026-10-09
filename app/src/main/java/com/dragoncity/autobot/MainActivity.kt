@@ -21,7 +21,7 @@ class MainActivity : Activity() {
   }
   val title = TextView(this).apply { text = "DragonCity AutoBot"; textSize = 24f }
   val info = TextView(this).apply {
-   text = "Versão alfa: seleção de jogo e autorização de acessibilidade. Reconhecimento visual e tarefas automáticas ainda não estão implementados."
+   text = "Modo batalha experimental: ensine até 12 toques e reproduza apenas se as telas corresponderem. Não é IA treinada; não decide o melhor ataque nem garante vitórias."
    textSize = 16f
   }
   val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -50,12 +50,38 @@ class MainActivity : Activity() {
    if (intent != null) startActivity(intent)
    else Toast.makeText(this, "Selecione o jogo primeiro", Toast.LENGTH_SHORT).show()
   }
+  fun startMode(teach: Boolean) {
+   val service = BotAccessibilityService.active
+   if (service == null) {
+    Toast.makeText(this, "Ative o serviço de acessibilidade primeiro", Toast.LENGTH_LONG).show()
+    return
+   }
+   val pkg = getSharedPreferences("bot", MODE_PRIVATE).getString("package", null)
+   val intent = pkg?.let { packageManager.getLaunchIntentForPackage(it) }
+   if (intent == null) {
+    Toast.makeText(this, "Selecione o jogo primeiro", Toast.LENGTH_LONG).show()
+    return
+   }
+   startActivity(intent)
+   android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+    if (teach) service.beginTraining() else service.beginReplay()
+   }, 2200L)
+  }
+  val teach = Button(this).apply { text = "ENSINAR batalha (até 12 toques)" }
+  teach.setOnClickListener { startMode(true) }
+  val replay = Button(this).apply { text = "EXECUTAR batalha aprendida" }
+  replay.setOnClickListener { startMode(false) }
+  val stop = Button(this).apply { text = "PARAR automação" }
+  stop.setOnClickListener { BotAccessibilityService.active?.stopAll("Parado pelo usuário") }
   layout.addView(title)
   layout.addView(info)
   layout.addView(spinner)
   layout.addView(save)
   layout.addView(permissions)
   layout.addView(open)
+  layout.addView(teach)
+  layout.addView(replay)
+  layout.addView(stop)
   setContentView(ScrollView(this).apply { addView(layout) })
  }
 }
