@@ -58,3 +58,9 @@ Não houve teste no Dragon City e não houve teste no Samsung Galaxy A34 físico
 Não há evidência de que o replay conclua batalhas reais. Não há decisão de ataque, classificador de vitória/derrota, ramificações aprendidas ou validação semântica dos controles do Dragon City. O bloqueio de gastos depende de revisão humana, OCR e contexto visual, e pode falhar com ícones/textos não reconhecidos ou mudanças posteriores à captura. As assinaturas e os thresholds também podem interromper ações legítimas durante animações.
 
 Relatórios completos de testes JVM, testes instrumentados e Lint, junto do log final e da verificação de assinatura, foram reunidos na entrega local. O workflow GitHub foi atualizado para repetir build/testes e publicar artefatos; sua execução remota depende da disponibilidade do Actions na conta.
+
+## Bloqueio remoto confirmado
+
+Após o envio do código à branch main, o workflow [37879537756](https://github.com/ml027265-arch/DragonCityAutoBot/actions/runs/37879537756) terminou sem iniciar qualquer etapa dos jobs. A anotação do GitHub informou: `The job was not started because your account is locked due to a billing issue.`
+
+Consequência: o GitHub Actions não executou testes nem publicou artefatos nessa execução. Os resultados acima são exclusivamente os resultados locais. O APK compilado, os relatórios completos, o checksum e o código-fonte foram disponibilizados em `DragonCityAutoBot-entrega` na Área de Trabalho. Nenhuma configuração de faturamento foi alterada.
