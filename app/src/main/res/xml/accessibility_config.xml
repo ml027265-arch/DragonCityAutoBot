@@ -4,5 +4,6 @@
  android:notificationTimeout="100"
  android:canPerformGestures="true"
  android:canTakeScreenshot="true"
- android:canRetrieveWindowContent="false"
+ android:canRetrieveWindowContent="true"
+ android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
  android:description="@string/service_description"/>

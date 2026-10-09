@@ -6,7 +6,7 @@ data class AutomationConfig(
  val battles: Boolean = false,
  val rewards: Boolean = true,
  val intervalMs: Long = 2200L,
- val confidenceThreshold: Double = 0.90
+ val confidenceThreshold: Double = 0.96
 )
 enum class TaskType { GOLD, FOOD, BATTLE, REWARD }
 enum class BotState { STOPPED, SEARCHING, VERIFYING, PAUSED, ERROR }

@@ -1,26 +1,26 @@
-# Batalhas — demonstração experimental (Android 16)
+# Ensinar e executar batalhas
 
-## O que existe
-- No app, escolha Dragon City e habilite manualmente o serviço de acessibilidade.
-- **ENSINAR** abre o jogo com uma camada de captura de toques. Toque nos controles da batalha que deseja demonstrar; até **12 toques**. Toque **PARAR** na faixa superior para salvar.
-- Antes de cada toque, o serviço captura a tela (AccessibilityService.takeScreenshot) e salva um recorte de 96x96 pixels em armazenamento privado, junto da posição relativa do toque.
-- O toque é encaminhado ao jogo por dispatchGesture, sem root.
-- **EXECUTAR** abre o jogo e tenta reconhecer a sequência de recortes antes de cada toque. Se não reconhecer, se o jogo perder foco, se a captura falhar ou se ultrapassar 90 segundos, interrompe.
-- **PARAR** no app interrompe; o modo ensinar também tem PARAR na faixa superior.
-- Sem upload de capturas para servidor. Para apagar os dados, faça novo treinamento ou limpe os dados do aplicativo.
+A demonstração contém até 12 toques simples. Não grava gestos longos/arrastos nem observa toques feitos fora da camada de treinamento. A camada intercepta o toque, se oculta, obtém a captura, verifica texto de risco, encaminha o gesto e só salva após confirmar uma mudança visual.
 
-## Limitações relevantes
-- **Protótipo não compilado nem validado em aparelho.** O GitHub Actions estava bloqueado por faturamento na conta.
-- Não é um modelo de aprendizado de máquina; usa correspondência visual de pixels. Animações, mudança de zoom, orientação, resoluções, transições e atualizações do jogo podem interromper o replay.
-- O sistema NÃO lê toques que você faça diretamente no jogo sem a camada de treinamento. Ela intercepta toques e os encaminha.
-- Apenas toques simples; não aprende arrastar, pressionar por longo tempo ou decisões condicionais.
-- O usuário é responsável por selecionar uma sequência segura; não há proteção semântica garantida contra gastos ou botões de compras. **Nunca demonstre compras ou gasto de gemas.**
-- Para batalhas com múltiplos caminhos ou resultados variáveis, não existe garantia de conclusão.
-- O jogo precisa estar visível e o serviço de acessibilidade ativo. Não funciona com tela apagada.
-- O uso de automação pode violar regras do jogo.
+Cada passo armazena: imagem completa anterior, recorte de 96x96 px em torno do toque, coordenadas relativas, posição exata do toque dentro do recorte (inclusive perto das bordas), dimensão original, amostras visuais da tela antes/depois e aprovação manual. O pacote do jogo é registrado no índice. Demonstrações antigas sem esse esquema são rejeitadas.
 
-## Próximos passos
-- Compilar e corrigir erros de build, validar no Samsung A34 Android 16.
-- Adicionar detector de resultado da batalha e verificação visual pós-toque.
-- Adicionar gestos, seleção de áreas e treinamento com variações.
-- Adicionar bloqueio semântico de compras com confirmação explícita.
+No replay, a proporção deve coincidir com a demonstração (tolerância 0,025); escala aceita pelo matcher entre 0,5 e 2. A comparação global exige similaridade mínima 0,94, o alvo local 0,96. A busca é limitada a 64 px multiplicados pela escala ao redor da posição prevista. Recortes uniformes e alvos múltiplos são rejeitados. O ponto executado acompanha o recorte identificado e seu deslocamento interno, em vez de reutilizar a posição original.
+
+Após cada gesto, espera 1,7 s e exige uma mudança visual (similaridade abaixo de 0,985 com a tela anterior) e um resultado parecido com o resultado ensinado (mínimo 0,94). Não tenta repetir o gesto se a confirmação falhar. O limite total da sessão é 90 s; captura/OCR/busca têm limite de 8 s e confirmação do gesto, 3 s. Alteração de foco, configuração, resolução, orientação, perda de acessibilidade e captura protegida interrompem.
+
+A faixa superior e bordas são excluídas das ações permitidas. O painel PARAR permanece disponível no replay; durante o ensino a camada precisa se ocultar brevemente para capturar e encaminhar o toque. O botão PARAR no aplicativo também cancela uma abertura pendente do jogo. Mudanças de configuração invalidam a sessão.
+
+## Proteção contra gastos
+
+- Revisão obrigatória de cada captura completa, com marcação do toque, para identificar somente ações gratuitas.
+- OCR latino local e texto de acessibilidade procuram termos de compra/gasto em português e inglês antes dos gestos; falha de OCR bloqueia a ação.
+- Limites de ações, tempo e frequência; uma única ação pendente por vez.
+- Contexto completo e alvo local verificados antes, contexto e mudança verificados depois.
+
+**Proteção parcial:** ícones, textos ilegíveis, moedas sem rótulo e mudanças rápidas após uma captura podem escapar. Não existe um classificador semântico validado do Dragon City nem garantia de ausência de gastos. Uma revisão manual incorreta também permite uma ação perigosa. O aplicativo pode bloquear batalhas legítimas se houver texto relacionado a gemas/loja em outra região da tela ou se animações alterarem o contexto.
+
+## Testes e limitações
+
+A integração foi testada com AccessibilityService, captura real do emulador, OCR incluído e dispatchGesture em uma tela sintética Android 16. O teste de duas etapas verifica o deslocamento efetivo da coordenada enviada e a confirmação pós-ação. Telas de compra e desconhecidas foram bloqueadas sem gestos.
+
+Não houve teste real no Dragon City ou no Samsung Galaxy A34. Não há escolha de melhor ataque, detecção semântica de resultado ou ramificações de batalha. Mudanças de interface, resolução, proporção, zoom, duração de animações e resultados variáveis podem interromper a sequência. Uma sequência concluída significa somente que os passos visuais foram verificados.
