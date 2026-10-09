@@ -103,7 +103,7 @@ class MainActivity : Activity() {
     private fun refreshStatus() {
         val steps = store.load()
         status.text = "Acessibilidade: ${if (BotAccessibilityService.active != null) "ativa" else "desativada"}\n"+
-            "Demonstração: ${steps.size} ações, ${steps.count { it.approved }} revisadas\n" + prefs.getString("status", "Parado")
+            "Demonstração: ${steps.size} ações, ${steps.count { it.approved }} revisadas\nÚltimo status: " + prefs.getString("status", "Parado")
     }
     private fun review(index: Int) {
         val steps = store.load()

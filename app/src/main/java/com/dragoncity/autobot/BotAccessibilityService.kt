@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -17,6 +18,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
+import android.widget.TextView
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -52,6 +54,8 @@ class BotAccessibilityService : AccessibilityService() {
     private var sessionPackage: String? = null
     private var trainingBefore: Bitmap? = null
     private var notice: Toast? = null
+    private var phase = ""
+    val visiblePanel: String? get() = overlay?.takeIf { it.isAttachedToWindow }?.contentDescription?.toString()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -64,7 +68,11 @@ class BotAccessibilityService : AccessibilityService() {
         if (training || playing) {
             val pkg = event?.packageName?.toString()
             if (pkg != null && pkg != packageName && pkg != sessionPackage &&
-                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) stopAll("Jogo saiu de primeiro plano")
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                // Toasts, the overlay and Samsung system panels can emit events without replacing the game.
+                val token = generation
+                handler.postDelayed({ if (current(token) && !inGame()) stopAll("Jogo saiu de primeiro plano") }, 300)
+            }
         }
     }
     override fun onInterrupt() { stopAll("Serviço interrompido") }
@@ -82,20 +90,28 @@ class BotAccessibilityService : AccessibilityService() {
         return try { sessionPackage != null && sessionPackage == selectedPackage() && root.packageName?.toString() == sessionPackage }
         finally { @Suppress("DEPRECATION") root.recycle() }
     }
-    private fun accessibleText(): String {
-        val root = activeRoot() ?: return ""
-        val text = StringBuilder()
+    private fun accessibleRisk(x: Int? = null, y: Int? = null): Boolean {
+        val root = activeRoot() ?: return true
+        var risk = false
         var count = 0
         fun visit(node: AccessibilityNodeInfo, depth: Int) {
             if (depth > 20 || count++ > 400) return
-            text.append(node.text ?: "").append(' ').append(node.contentDescription ?: "").append(' ')
+            val text = "${node.text?.toString().orEmpty()} ${node.contentDescription?.toString().orEmpty()}"
+            if (SafetyPolicy.purchaseConfirmation(text)) risk = true
+            if (x != null && y != null) {
+                val bounds = Rect(); node.getBoundsInScreen(bounds)
+                // A root/surface containing the whole screen has no trustworthy local label geometry.
+                val localized = expectedWidth <= 0 || expectedHeight <= 0 ||
+                    bounds.width().toLong()*bounds.height() < expectedWidth.toLong()*expectedHeight*0.6
+                if (localized && SafetyPolicy.labelNearTap(text, bounds.left, bounds.top, bounds.right, bounds.bottom, x, y, 96)) risk=true
+            }
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
                 try { visit(child, depth + 1) } finally { @Suppress("DEPRECATION") child.recycle() }
             }
         }
         try { visit(root, 0) } finally { @Suppress("DEPRECATION") root.recycle() }
-        return text.toString()
+        return risk
     }
     private fun toast(message: String) {
         notice?.cancel()
@@ -108,18 +124,38 @@ class BotAccessibilityService : AccessibilityService() {
     fun stopAll(reason: String? = null) {
         notice?.cancel(); notice = null
         generation++; training = false; playing = false; awaiting = false; guard.stop()
+        recognizedText = null
         trainingBefore?.recycle(); trainingBefore = null
         handler.removeCallbacksAndMessages(null); removeOverlay()
         if (reason != null) {
             getSharedPreferences("bot", MODE_PRIVATE).edit().putString("status", reason).apply()
             toast(reason)
+            if (::window.isInitialized) showStoppedPanel(reason)
         }
+    }
+    private fun showStoppedPanel(reason: String) {
+        val message = "ENSINO/EXECUÇÃO PARADOS: $reason\nToque aqui para fechar. Veja o último status no app."
+        val panel = TextView(this).apply {
+            text = message; contentDescription = message; setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(90, 30, 30)); textSize=14f; setPadding(16, 8, 16, 8)
+            setOnClickListener { removeOverlay() }
+        }
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            android.graphics.PixelFormat.TRANSLUCENT).apply { gravity=Gravity.TOP or Gravity.START }
+        try { window.addView(panel, params); overlay=panel } catch (_: RuntimeException) { }
+    }
+    private fun setPhase(message: String) {
+        phase=message
+        getSharedPreferences("bot", MODE_PRIVATE).edit().putString("status", message).apply()
+        removeOverlay(); addOverlay()
     }
     private fun current(token: Long) = token == generation && (training || playing)
     private fun begin(teach: Boolean): Boolean {
         stopAll(); sessionPackage = selectedPackage()
         if (!inGame()) { toast("O jogo selecionado precisa estar em primeiro plano"); return false }
         training = teach; playing = !teach
+        phase = ""
         expectedWidth = 0; expectedHeight = 0; lastActionX = -1; lastActionY = -1; lastPre = null
         lastTrainingTap = 0
         guard = ReplayGuard(SystemClock::elapsedRealtime)
@@ -129,8 +165,7 @@ class BotAccessibilityService : AccessibilityService() {
     }
     fun beginTraining() {
         if (!begin(true)) return
-        store.clear(); addOverlay()
-        toast("Ensinar: até 12 toques. Depois revise as ações no app.")
+        store.clear(); setPhase("Aguardando toque")
     }
     fun beginReplay() {
         val loaded = store.load()
@@ -144,14 +179,16 @@ class BotAccessibilityService : AccessibilityService() {
     private fun addOverlay() {
         if ((!training && !playing) || overlay != null) return
         val bandHeight = minOf((48 * resources.displayMetrics.density).toInt(), (resources.displayMetrics.heightPixels*0.10).toInt())
+        val label = if (training) "ENSINAR ${store.load().size}/12 • $phase • PARAR" else "EXECUTAR ${stepIndex+1}/${steps.size} • PARAR"
         val view = object : View(this) {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             override fun onDraw(canvas: Canvas) {
                 paint.color = Color.argb(235, 25, 25, 25)
                 canvas.drawRect(0f, 0f, width.toFloat(), bandHeight.toFloat(), paint)
                 paint.color = Color.WHITE; paint.textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 16f, resources.displayMetrics)
-                canvas.drawText(if (training) "ENSINAR ${store.load().size}/12 • PARAR" else "EXECUTAR ${stepIndex+1}/${steps.size} • PARAR",
-                    12f, bandHeight * 0.65f, paint)
+                val measured = paint.measureText(label)
+                if (measured > width-24) paint.textSize *= (width-24).coerceAtLeast(1) / measured
+                canvas.drawText(label, 12f, bandHeight * 0.65f, paint)
             }
             override fun onTouchEvent(event: MotionEvent): Boolean {
                 if (event.action == MotionEvent.ACTION_UP) {
@@ -166,8 +203,9 @@ class BotAccessibilityService : AccessibilityService() {
             }
             override fun performClick(): Boolean { super.performClick(); return true }
         }
+        view.contentDescription=label
         val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,
-            if (training) WindowManager.LayoutParams.MATCH_PARENT else bandHeight,
+            if (training && !awaiting) WindowManager.LayoutParams.MATCH_PARENT else bandHeight,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             android.graphics.PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
@@ -182,7 +220,7 @@ class BotAccessibilityService : AccessibilityService() {
         handler.postDelayed(timeout, 8_000)
         capture.capture { bitmap ->
             if (!current(token)) { bitmap?.recycle(); return@capture }
-            if (bitmap == null) { handler.removeCallbacks(timeout); stopAll("Captura indisponível ou protegida"); return@capture }
+            if (bitmap == null) { handler.removeCallbacks(timeout); stopAll("Captura indisponível: ${capture.lastFailure ?: "imagem protegida"}"); return@capture }
             if (expectedWidth == 0) { expectedWidth = bitmap.width; expectedHeight = bitmap.height }
             if (bitmap.width != expectedWidth || bitmap.height != expectedHeight || !inGame()) {
                 bitmap.recycle(); handler.removeCallbacks(timeout); stopAll("Orientação, resolução ou foco mudou"); return@capture
@@ -192,21 +230,33 @@ class BotAccessibilityService : AccessibilityService() {
                     .addOnCompleteListener { task ->
                         handler.removeCallbacks(timeout)
                         if (!current(token)) { bitmap.recycle(); return@addOnCompleteListener }
-                        if (!task.isSuccessful || !inGame() ||
-                            SafetyPolicy.spendingRisk(task.result?.text.orEmpty() + " " + accessibleText())) {
-                            bitmap.recycle(); stopAll("Texto de compra/gasto, foco ou OCR inseguro: nenhum toque"); return@addOnCompleteListener
+                        if (!task.isSuccessful) { bitmap.recycle(); stopAll("OCR falhou; nenhum toque (${task.exception?.javaClass?.simpleName})"); return@addOnCompleteListener }
+                        if (!inGame()) { bitmap.recycle(); stopAll("Jogo não está ativo após a captura"); return@addOnCompleteListener }
+                        if (SafetyPolicy.purchaseConfirmation(task.result.text) || accessibleRisk()) {
+                            bitmap.recycle(); stopAll("Confirmação de compra/gasto detectada: nenhum toque"); return@addOnCompleteListener
                         }
+                        recognizedText = task.result
                         done(bitmap)
                     }
             } catch (_: Exception) { handler.removeCallbacks(timeout); bitmap.recycle(); stopAll("Falha no OCR") }
         }
     }
+    private var recognizedText: com.google.mlkit.vision.text.Text? = null
+    private fun targetRisk(x: Int, y: Int): Boolean {
+        val text = recognizedText ?: return true
+        return text.textBlocks.any { block -> block.lines.any { line -> line.elements.any { element ->
+            val bounds = element.boundingBox
+            SafetyPolicy.spendingRisk(element.text) && (bounds == null ||
+                SafetyPolicy.labelNearTap(element.text, bounds.left, bounds.top, bounds.right, bounds.bottom, x, y, 96))
+        } } } || accessibleRisk(x, y)
+    }
     private fun tap(x: Int, y: Int, token: Long, done: () -> Unit) {
         if (!current(token)) return
-        if (!inGame() || SafetyPolicy.spendingRisk(accessibleText()) ||
+        if (!inGame() ||
             !SafetyPolicy.validPoint(x.toDouble()/expectedWidth, y.toDouble()/expectedHeight)) {
             stopAll("Toque fora da área segura ou foco perdido"); return
         }
+        if (targetRisk(x, y)) { stopAll("Controle de compra/gasto próximo ao toque: ação bloqueada"); return }
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 75)).build()
         val timeout = Runnable { if (current(token)) stopAll("Toque sem confirmação; não será repetido") }
@@ -223,7 +273,7 @@ class BotAccessibilityService : AccessibilityService() {
     }
     private fun recordTap(x: Int, y: Int, token: Long) {
         if (!current(token) || awaiting || SystemClock.elapsedRealtime()-lastTrainingTap < 1_500) return
-        awaiting = true; lastTrainingTap = SystemClock.elapsedRealtime(); removeOverlay()
+        awaiting = true; lastTrainingTap = SystemClock.elapsedRealtime(); setPhase("Capturando e verificando")
         handler.postDelayed({ safeFrame(token) { before ->
             if (!SafetyPolicy.validPoint(x.toDouble()/before.width, y.toDouble()/before.height)) {
                 before.recycle(); stopAll("Área de toque não permitida"); return@safeFrame
@@ -233,13 +283,14 @@ class BotAccessibilityService : AccessibilityService() {
             trainingBefore = preserved
             before.recycle()
             tap(x, y, token) {
+                setPhase("Verificando resultado")
                 handler.postDelayed({ safeFrame(token) { after ->
                     val ok = try { store.add(preserved, after, x, y) } catch (_: Exception) { false }
                     after.recycle(); preserved.recycle()
                     trainingBefore = null
-                    if (!ok) { stopAll("Tela não mudou, limite ou gravação falhou"); return@safeFrame }
+                    if (!ok) { stopAll("Toque não salvo: tela sem mudança suficiente, limite ou falha de gravação"); return@safeFrame }
                     awaiting = false
-                    if (store.load().size >= 12) stopAll("12 ações salvas; revise no app") else addOverlay()
+                    if (store.load().size >= 12) stopAll("12 ações salvas; revise no app") else setPhase("Toque salvo; aguardando próximo")
                 } }, 1_700)
             }
         } }, 250)

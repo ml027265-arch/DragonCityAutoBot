@@ -6,8 +6,8 @@ android {
   applicationId = "com.dragoncity.autobot"
   minSdk = 30
   targetSdk = 36
-  versionCode = 2
-  versionName = "0.5-alpha"
+  versionCode = 3
+  versionName = "0.5.1-alpha"
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
  }
  compileOptions {

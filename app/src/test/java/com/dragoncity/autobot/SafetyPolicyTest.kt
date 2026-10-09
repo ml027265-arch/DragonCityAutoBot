@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SafetyPolicyTest {
+    @Test fun passiveStoreLabelsDoNotBlockTheEntireScreen() {
+        assertFalse(SafetyPolicy.purchaseConfirmation("BATALHA LOJA OFERTAS GEMAS 65"))
+        assertTrue(SafetyPolicy.spendingRisk("LOJA")); assertTrue(SafetyPolicy.spendingRisk("OFERTAS"))
+    }
+    @Test fun explicitSpendingPromptAlwaysBlocks() {
+        listOf("Comprar", "Deseja gastar 5 gemas?", "BUY GEMS $5", "Use 3 gems", "Usar 30 moedas?").forEach {
+            assertTrue(it, SafetyPolicy.purchaseConfirmation(it))
+        }
+    }
+    @Test fun shopLabelBlocksOnlyNearbyTap() {
+        assertTrue(SafetyPolicy.labelNearTap("LOJA",800,400,900,440,850,380,96))
+        assertFalse(SafetyPolicy.labelNearTap("LOJA",800,400,900,440,200,380,96))
+        assertFalse(SafetyPolicy.labelNearTap("BATALHA",800,400,900,440,850,380,96))
+    }
     @Test fun blocksPurchaseLanguageAndAccents() {
         listOf("Comprar", "GASTAR GEMAS", "Oferta especial", "Promoção", "Buy now", "Purchase", "R$ 9,99", "$5", "€3", "PAY", "Diamantes").forEach {
             assertTrue(it, SafetyPolicy.spendingRisk(it))

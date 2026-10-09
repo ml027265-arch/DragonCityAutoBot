@@ -30,6 +30,11 @@ class DeviceIntegrationTest {
         assertTrue(message + "; service status=" + context.getSharedPreferences("bot",Context.MODE_PRIVATE).getString("status",""),condition())
     }
     private fun main(block: () -> Unit) { instrumentation.runOnMainSync(block) }
+    private fun waitForPanel(service: BotAccessibilityService, text: String) {
+        waitFor("Visible panel missing: $text", 5) {
+            var visible=false; main { visible=service.visiblePanel.orEmpty().contains(text) }; visible
+        }
+    }
     private fun <T> withService(block: (BotAccessibilityService) -> T): T {
         // Automatic permission setup is restricted to disposable Android SDK emulators.
         require(android.os.Build.HARDWARE in listOf("ranchu", "goldfish"))
@@ -67,19 +72,21 @@ class DeviceIntegrationTest {
             val attack=text("ATTACK"); assertTrue(attack.contains("ATTACK")); assertFalse(SafetyPolicy.spendingRisk(attack))
         } finally { recognizer.close() }
     }
-    @Test fun teachesCapturesPersistsAndAdaptivelyReplaysTwoActions() {
+    @Test fun teachesWithStoreLabelsAndAdaptivelyReplaysTwoActions() {
         withService { service ->
             val store=BattleDemonstration(context)
             context.getSharedPreferences("bot",Context.MODE_PRIVATE).edit().putString("package",context.packageName).commit()
             ActivityScenario.launch(BattleFixtureActivity::class.java).use { scenario ->
                 lateinit var fixture: BattleFixtureActivity
-                scenario.onActivity { fixture=it }
+                scenario.onActivity { fixture=it; it.showNavigationLabels=true; it.surface.invalidate() }
                 instrumentation.waitForIdleSync(); Thread.sleep(600)
                 var point=intArrayOf()
                 main { point=fixture.target(); service.beginTraining() }
                 Thread.sleep(500); shell("input tap ${point[0]} ${point[1]}")
+                main { assertNotNull("Progress panel disappeared after tap", service.visiblePanel) }
                 waitFor("No verified demonstration saved",25) { store.load().size==1 }
                 assertEquals(1,fixture.actionCount); assertFalse(store.load()[0].approved)
+                waitForPanel(service, "Toque salvo")
                 Thread.sleep(400); shell("input tap ${point[0]} ${point[1]}")
                 waitFor("Second demonstration step missing",25) { store.load().size==2 }
                 assertEquals(2,fixture.actionCount)
@@ -111,7 +118,47 @@ class DeviceIntegrationTest {
                 waitFor("Purchase guard did not stop") {
                     context.getSharedPreferences("bot",Context.MODE_PRIVATE).getString("status","")!!.contains("compra/gasto")
                 }
+                waitForPanel(service, "compra/gasto")
                 assertEquals(0,fixture.actionCount); assertTrue(store.load().isEmpty())
+            }
+            store.clear()
+        }
+    }
+    @Test fun nearbyStoreLabelBlocksGestureAndShowsReason() {
+        withService { service ->
+            context.getSharedPreferences("bot",Context.MODE_PRIVATE).edit().putString("package",context.packageName).commit()
+            val store=BattleDemonstration(context)
+            ActivityScenario.launch(BattleFixtureActivity::class.java).use { scenario ->
+                lateinit var fixture: BattleFixtureActivity
+                scenario.onActivity { fixture=it; it.showStoreAtTarget=true; it.surface.invalidate() }
+                Thread.sleep(600)
+                var point=intArrayOf(); main { point=fixture.target(); service.beginTraining() }
+                Thread.sleep(500); shell("input tap ${point[0]} ${point[1]}")
+                waitFor("Nearby store label did not halt") {
+                    context.getSharedPreferences("bot",Context.MODE_PRIVATE).getString("status","")!!.contains("próximo ao toque")
+                }
+                assertEquals(0,fixture.actionCount); assertTrue(store.load().isEmpty())
+                waitForPanel(service, "ação bloqueada")
+            }
+            store.clear()
+        }
+    }
+    @Test fun unchangedTrainingScreenShowsReasonWithoutRetry() {
+        withService { service ->
+            context.getSharedPreferences("bot",Context.MODE_PRIVATE).edit().putString("package",context.packageName).commit()
+            val store=BattleDemonstration(context)
+            ActivityScenario.launch(BattleFixtureActivity::class.java).use { scenario ->
+                lateinit var fixture: BattleFixtureActivity
+                scenario.onActivity { fixture=it; it.freezeScreen=true; it.surface.invalidate() }
+                Thread.sleep(600)
+                var point=intArrayOf(); main { point=fixture.target(); service.beginTraining() }
+                Thread.sleep(500); shell("input tap ${point[0]} ${point[1]}")
+                waitFor("Unchanged screen did not show interruption") {
+                    context.getSharedPreferences("bot",Context.MODE_PRIVATE).getString("status","")!!.contains("Toque não salvo")
+                }
+                assertEquals(1,fixture.actionCount); assertTrue(store.load().isEmpty())
+                waitForPanel(service, "tela sem mudança")
+                Thread.sleep(1000); assertEquals(1,fixture.actionCount)
             }
             store.clear()
         }

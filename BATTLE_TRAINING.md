@@ -24,3 +24,7 @@ A faixa superior e bordas são excluídas das ações permitidas. O painel PARAR
 A integração foi testada com AccessibilityService, captura real do emulador, OCR incluído e dispatchGesture em uma tela sintética Android 16. O teste de duas etapas verifica o deslocamento efetivo da coordenada enviada e a confirmação pós-ação. Telas de compra e desconhecidas foram bloqueadas sem gestos.
 
 Não houve teste real no Dragon City ou no Samsung Galaxy A34. Não há escolha de melhor ataque, detecção semântica de resultado ou ramificações de batalha. Mudanças de interface, resolução, proporção, zoom, duração de animações e resultados variáveis podem interromper a sequência. Uma sequência concluída significa somente que os passos visuais foram verificados.
+
+## Atualização 0.5.1
+
+Rótulos de navegação como LOJA/OFERTAS, longe da coordenada da ação, não bloqueiam toda a tela. Palavras de compra/gasto explícito continuam sendo avaliadas globalmente. Os termos passivos são avaliados nas caixas de texto próximas ao alvo (96 px de margem); elementos com geometria insuficiente podem causar bloqueio conservador. O painel mostra andamento e mantém o motivo de uma interrupção. Veja TEACHING_FIX_VALIDATION.md para os testes de regressão em orientação horizontal.

@@ -8,14 +8,14 @@ Aplicativo experimental em Kotlin para Android 11+ (minSdk 30), compilado com co
 - Demonstração versionada vinculada ao pacote selecionado: recortes visuais, captura completa para revisão, posição relativa, deslocamento do ponto dentro do recorte e assinaturas das telas anteriores/posteriores. Armazenamento privado com substituição atômica; backups desabilitados.
 - Cada ação precisa ser revisada como gratuita antes do EXECUTAR. A revisão mostra a tela completa e marca o ponto em vermelho.
 - EXECUTAR procura o alvo perto da posição ensinada, adapta o ponto ao deslocamento reconhecido e à escala da resolução com proporção compatível. Exige contexto visual anterior e resultado posterior correspondentes.
-- OCR latino incluído no APK e leitura de acessibilidade bloqueiam termos de compras, pagamentos, gemas e lojas em português/inglês. Falha no OCR também interrompe.
+- OCR latino incluído no APK e leitura de acessibilidade bloqueiam controles de compras/gemas/lojas próximos ao toque. Pedidos explícitos de compra/gasto bloqueiam a tela inteira. Rótulos de navegação distantes como LOJA/OFERTAS não impedem uma ação gratuita. Falha no OCR também interrompe.
 - PARAR disponível sobre o jogo durante ambos os modos. Sem repetição de gesto recusado, cancelado, sem confirmação ou com resultado inesperado. Cancelamento invalida callbacks antigos.
 
 Não há decisão estratégica de batalha, classificação de vitória/derrota ou replay com ramificações. Os modos de coleta de ouro/comida não são disponibilizados pela interface.
 
 ## Validação realizada
 
-Veja [VALIDATION.md](VALIDATION.md). Compilação debug, 32 testes JVM/Robolectric, cinco testes instrumentados em emulador Android 16/API 36 e Lint passaram. Os testes instrumentados usam exclusivamente uma tela sintética de batalha incluída no source set debug.
+Veja [TEACHING_FIX_VALIDATION.md](TEACHING_FIX_VALIDATION.md) para a versão 0.5.1 e [VALIDATION.md](VALIDATION.md) para a validação inicial. Compilação debug, 35 testes JVM/Robolectric, sete testes instrumentados em emulador Android 16/API 36 e Lint passaram. Os testes instrumentados usam exclusivamente uma tela sintética de batalha incluída no source set debug.
 
 **Não foi realizado teste no Dragon City nem no Galaxy A34 físico.** Os resultados em emulador não demonstram que a automação funciona no jogo. OCR e comparação visual podem errar; o bloqueio de gastos não é uma garantia contra ícones sem texto, idiomas não cobertos ou mudanças de tela após a captura.
 
